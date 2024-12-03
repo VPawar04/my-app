@@ -1,0 +1,79 @@
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_IMAGE = 'my-app'          // The name of the Docker image
+        DOCKER_REGISTRY = 'docker.io'    // Docker registry (could be Docker Hub, ECR, etc.)
+        REPO_NAME = 'myusername/my-app'  // Docker Hub repository name
+        DOCKER_TAG = "${BUILD_NUMBER}"   // Jenkins build number as Docker tag
+    }
+
+    stages {
+        stage('Checkout Code') {
+            steps {
+                // Pull the latest code from the GitHub repository
+                git branch: 'main', url: 'https://github.com/your-username/my-app.git'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    // Build the Docker image
+                    sh 'docker build -t $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG .'
+                }
+            }
+        }
+
+        stage('Run Tests') {
+            steps {
+                script {
+                    // Run tests in the Docker container (optional, but recommended)
+                    sh 'docker run --rm $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG npm test'
+                }
+            }
+        }
+
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    // Login to Docker Hub
+                    sh 'docker login -u $DOCKER_USERNAME -p $DOCKER_PASSWORD'
+
+                    // Push the Docker image to Docker Hub
+                    sh 'docker push $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG'
+                }
+            }
+        }
+
+        stage('Deploy to Server') {
+            steps {
+                script {
+                    // Example of deploying the Docker container to a remote server
+                    // Replace with your own server deployment strategy (e.g., AWS, VPS, etc.)
+                    sh """
+                    ssh -o StrictHostKeyChecking=no user@your-server-ip << EOF
+                        docker pull $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG
+                        docker stop my-app || true
+                        docker rm my-app || true
+                        docker run -d --name my-app -p 3000:3000 $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG
+                    EOF
+                    """
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            // Clean up Docker images after the build process
+            sh 'docker rmi $DOCKER_REGISTRY/$REPO_NAME:$DOCKER_TAG || true'
+        }
+        success {
+            echo 'Deployment Successful!'
+        }
+        failure {
+            echo 'Deployment Failed!'
+        }
+    }
+}
